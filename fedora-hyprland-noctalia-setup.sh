@@ -353,18 +353,39 @@ setup_power() {
 }
 
 setup_file_manager() {
-  phase "File manager + graphics-team collaboration tools"
-  install "thunar stack" thunar thunar-volman thunar-archive-plugin \
-    tumbler ffmpegthumbnailer raw-thumbnailer \
-    gvfs gvfs-mtp gvfs-gphoto2 gvfs-smb xarchiver xdg-utils
-
-  xdg-mime default thunar.desktop inode/directory 2>/dev/null \
-    && ok "Thunar set as the default handler for folders." \
-    || warn "Could not set Thunar as default folder handler — set it manually later if needed."
+  phase "File manager"
+  echo "File manager options:"
+  echo "  1) Dolphin  (recommended — matches the CachyOS Hypr/Noctalia dots if you use them later; KDE app, themed via qt6ct)"
+  echo "  2) Thunar   (lighter GTK option)"
+  echo "  3) Both"
+  read -r -p "Choice [1]: " fm_choice </dev/tty
+  case "${fm_choice:-1}" in
+    2)
+      install "thunar stack" thunar thunar-volman thunar-archive-plugin \
+        tumbler ffmpegthumbnailer raw-thumbnailer \
+        gvfs gvfs-mtp gvfs-gphoto2 gvfs-smb xarchiver xdg-utils
+      xdg-mime default thunar.desktop inode/directory 2>/dev/null \
+        && ok "Thunar set as the default handler for folders." \
+        || warn "Could not set Thunar as default folder handler."
+      ;;
+    3)
+      install "dolphin stack" dolphin kde-cli-tools ffmpegthumbnailer raw-thumbnailer gvfs gvfs-mtp gvfs-gphoto2 gvfs-smb xdg-utils
+      install "thunar stack" thunar thunar-volman thunar-archive-plugin tumbler xarchiver
+      xdg-mime default org.kde.dolphin.desktop inode/directory 2>/dev/null \
+        && ok "Dolphin set as the default handler for folders." \
+        || warn "Could not set Dolphin as default folder handler."
+      ;;
+    *)
+      install "dolphin stack" dolphin kde-cli-tools ffmpegthumbnailer raw-thumbnailer gvfs gvfs-mtp gvfs-gphoto2 gvfs-smb xdg-utils
+      xdg-mime default org.kde.dolphin.desktop inode/directory 2>/dev/null \
+        && ok "Dolphin set as the default handler for folders." \
+        || warn "Could not set Dolphin as default folder handler."
+      ;;
+  esac
 
   echo ""
   echo "Image viewer options:"
-  echo "  1) Gwenview  (recommended — RAW support, fast review; DMS already needs Qt, so no extra weight)"
+  echo "  1) Gwenview  (recommended — RAW support, pairs naturally with Dolphin)"
   echo "  2) qimgv     (lightweight GTK option)"
   echo "  3) imv       (lightest — Wayland-native, no toolkit overhead)"
   echo "  4) Skip"
@@ -375,12 +396,6 @@ setup_file_manager() {
     4) warn "Skipped image viewer." ;;
     *) install "image viewer" gwenview ;;
   esac
-
-  if ask_yn "Also install Dolphin (heavier, better previews for design file thumbnails like .psd)?"; then
-    install "dolphin" dolphin
-  else
-    warn "Skipped Dolphin."
-  fi
 }
 
 setup_daily_utils() {
@@ -419,15 +434,24 @@ setup_terminal() {
   echo "Terminal options:"
   echo "  1) Alacritty  (GPU-accelerated, in Fedora's default repos)"
   echo "  2) Ghostty    (fast, native, modern config — via Terra if enabled, else its own Copr)"
-  echo "  3) Both"
-  echo "  4) Skip"
+  echo "  3) Kitty      (Fedora's default repos — the CachyOS Hypr/Noctalia dots assume this and exec it directly from binds.lua)"
+  echo "  4) Multiple"
+  echo "  5) Skip"
   read -r -p "Choice [1]: " term_choice </dev/tty
   case "${term_choice:-1}" in
     2) install_ghostty ;;
-    3) install "alacritty" alacritty; install_ghostty ;;
-    4) warn "Skipped terminal emulator install — pick one later, e.g. 'sudo dnf install alacritty'." ;;
+    3) install "kitty" kitty ;;
+    4)
+      echo "Pick any combination (space-separated numbers, e.g. '1 3'): 1) Alacritty 2) Ghostty 3) Kitty"
+      read -r -p "Choice: " multi </dev/tty
+      [[ "$multi" == *1* ]] && install "alacritty" alacritty
+      [[ "$multi" == *2* ]] && install_ghostty
+      [[ "$multi" == *3* ]] && install "kitty" kitty
+      ;;
+    5) warn "Skipped terminal emulator install — pick one later, e.g. 'sudo dnf install alacritty'." ;;
     *) install "alacritty" alacritty ;;
   esac
+  warn "If you plan to use the CachyOS Hypr/Noctalia dots later, make sure Kitty is installed — binds.lua execs it by name regardless of your other terminal choices, until you edit that file."
 }
 
 install_ghostty() {
@@ -1098,6 +1122,67 @@ switch_display_manager() {
   ok "greetd enabled — it will take over the login screen on your next reboot, current session untouched."
 }
 
+# Installs the Fedora equivalents of cachyos-hypr-noctalia's dependency list,
+# then clones the repo and copies its etc/skel/.config tree into $HOME,
+# backing up anything already there. Structure per the sibling
+# cachyos-hyprland-settings repo and packages.cachyos.org's dep list:
+# https://github.com/CachyOS/cachyos-hypr-noctalia
+apply_cachyos_hypr_noctalia_dots() {
+  phase "CachyOS Hypr/Noctalia dots"
+  echo "This clones https://github.com/CachyOS/cachyos-hypr-noctalia and copies its"
+  echo "etc/skel/.config/{hypr,uwsm,noctalia} tree into your \$HOME/.config — the"
+  echo "same dotfiles CachyOS ships for Hyprland + Noctalia (monitors.lua,"
+  echo "binds.lua, windowrules.lua, etc. under ~/.config/hypr/config)."
+  ask_yn "Apply the CachyOS Hypr/Noctalia dots?" || { warn "Skipped CachyOS Hypr/Noctalia dots — apply manually later: git clone https://github.com/CachyOS/cachyos-hypr-noctalia"; return; }
+
+  step "Installing Fedora equivalents of the dots' dependency list..."
+  install "cachyos-hypr-noctalia deps" \
+    kitty dolphin gnome-text-editor gnome-calculator \
+    xorg-x11-server-utils tesseract ImageMagick zbar jq \
+    kde-cli-tools qt6ct
+  # hyprpicker comes from the lionheartp/Hyprland Copr already enabled above.
+  install "hyprpicker" hyprpicker
+  # adw-gtk-theme and wl-screenrec aren't always packaged the same way on
+  # Fedora — attempted here, but don't block the rest of the setup if they miss.
+  install "adwaita gtk theme (best-effort)" adw-gtk3-theme
+  install "wl-screenrec (best-effort)" wl-screenrec
+  install "uwsm" uwsm
+
+  local tmpdir; tmpdir="$(mktemp -d)"
+  step "Cloning cachyos-hypr-noctalia..."
+  if ! git clone --depth=1 https://github.com/CachyOS/cachyos-hypr-noctalia "$tmpdir/dots"; then
+    warn "Failed to clone cachyos-hypr-noctalia — apply it manually later."
+    rm -rf "$tmpdir"
+    return
+  fi
+
+  local skel="$tmpdir/dots/etc/skel/.config"
+  if [[ ! -d "$skel" ]]; then
+    warn "Expected $skel in the cloned repo but didn't find it — the repo layout may have changed. Inspect $tmpdir/dots manually, nothing was copied."
+    return
+  fi
+
+  local backup_suffix; backup_suffix="$(date +%Y%m%d%H%M%S)"
+  for d in hypr uwsm noctalia; do
+    [[ -d "$skel/$d" ]] || continue
+    if [[ -e "$HOME/.config/$d" ]]; then
+      mv "$HOME/.config/$d" "$HOME/.config/${d}.bak.${backup_suffix}"
+      warn "Existing ~/.config/$d backed up to ~/.config/${d}.bak.${backup_suffix}"
+    fi
+    mkdir -p "$HOME/.config"
+    cp -r "$skel/$d" "$HOME/.config/$d"
+    ok "Copied $d config to ~/.config/$d"
+  done
+
+  rm -rf "$tmpdir"
+  echo ""
+  echo "Next: open ~/.config/hypr/hyprland.conf (or hyprland.lua, whichever the"
+  echo "clone uses) and check how config/binds.lua etc. get pulled in — that's"
+  echo "also where you'd add the omarchy-binds.lua file, if you drop that in."
+  echo "See the CachyOS wiki for the post-setup steps (monitors.lua, variables.lua, etc.):"
+  echo "  https://wiki.cachyos.org/configuration/desktop_environments/hyprland/"
+}
+
 run_noctalia_setup() {
   phase "Installing Hyprland + Noctalia Shell + Noctalia Greeter"
   echo "Hyprland isn't in Fedora's official repos, so this uses the community"
@@ -1164,6 +1249,8 @@ run_noctalia_setup() {
   echo "Make sure Noctalia Shell and xfce-polkit are launched from hyprland.conf, e.g.:"
   echo '  exec-once = xfce-polkit'
   echo '  exec-once = noctalia-shell   # only if the wizard/meta package hasn'"'"'t already wired this up'
+
+  apply_cachyos_hypr_noctalia_dots
 }
 
 show_completion() {
